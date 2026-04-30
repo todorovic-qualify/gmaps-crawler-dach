@@ -506,6 +506,153 @@ def kategorien_liste():
     return {"kategorien": list(KATEGORIE_OSM_MAP.keys())}
 
 
+# ── Dach-Scanner Endpunkte ────────────────────────────────────────────────────
+
+# In-Memory-Speicher für Dach-Jobs (letzte 50 Jobs)
+_dach_jobs: dict[str, dict] = {}
+_dach_ergebnisse: dict[str, list[dict]] = {}
+
+
+class DachStartRequest(BaseModel):
+    ort: str
+    radius_km: int = 10
+    min_flaeche_qm: float = 500.0
+    max_ergebnisse: int = 200
+    enrichment: bool = True
+    nur_mit_kontakt: bool = False
+    lat: Optional[float] = None
+    lon: Optional[float] = None
+
+
+class DachJobStatus(BaseModel):
+    job_id: str
+    status: str
+    gescannt: int = 0
+    gefiltert: int = 0
+    verarbeitet: int = 0
+    fehler: Optional[str] = None
+
+
+def _starte_dach_job(request: DachStartRequest, job_id: str) -> None:
+    """Läuft im Hintergrund-Thread."""
+    from crawler.sources.dach_scanner import scanne_dachflaechen
+    from crawler.dach_enricher import reichere_dachlead_an
+
+    _dach_jobs[job_id] = {
+        "status": "laeuft",
+        "gescannt": 0,
+        "gefiltert": 0,
+        "verarbeitet": 0,
+    }
+
+    try:
+        leads = scanne_dachflaechen(
+            ort=request.ort,
+            radius_km=request.radius_km,
+            min_flaeche_qm=request.min_flaeche_qm,
+            max_ergebnisse=request.max_ergebnisse,
+            nur_mit_kontakt=False,
+            lat=request.lat,
+            lon=request.lon,
+        )
+        _dach_jobs[job_id]["gefiltert"] = len(leads)
+
+        if request.enrichment:
+            for i, lead in enumerate(leads):
+                if lead.webseite:
+                    try:
+                        reichere_dachlead_an(lead)
+                    except Exception as e:
+                        logger.warning(f"[Dach {job_id}] Enrichment {lead.anzeigename()}: {e}")
+                _dach_jobs[job_id]["verarbeitet"] = i + 1
+
+        if request.nur_mit_kontakt:
+            leads = [l for l in leads if l.kontakt_vorhanden()]
+
+        _dach_ergebnisse[job_id] = [l.to_csv_row() | {"lat": l.lat, "lon": l.lon} for l in leads]
+
+        # Speicher begrenzen: nur letzte 50 Jobs behalten
+        if len(_dach_ergebnisse) > 50:
+            oldest = next(iter(_dach_ergebnisse))
+            _dach_ergebnisse.pop(oldest, None)
+            _dach_jobs.pop(oldest, None)
+
+        _dach_jobs[job_id]["status"] = "abgeschlossen"
+        _dach_jobs[job_id]["verarbeitet"] = len(_dach_ergebnisse[job_id])
+        logger.info(f"[Dach {job_id}] Abgeschlossen: {len(_dach_ergebnisse[job_id])} Leads")
+
+    except Exception as e:
+        logger.error(f"[Dach {job_id}] Fehler: {e}", exc_info=True)
+        _dach_jobs[job_id]["status"] = "fehler"
+        _dach_jobs[job_id]["fehler"] = str(e)
+
+
+@app.post("/dach/starten", response_model=DachJobStatus)
+def dach_starten(
+    request: DachStartRequest,
+    background_tasks: BackgroundTasks,
+    x_api_key: Optional[str] = Header(None),
+):
+    """Startet einen Dachflächen-Scan im Hintergrund."""
+    prüfe_api_key(x_api_key)
+
+    import uuid
+    job_id = str(uuid.uuid4())[:8]
+
+    thread = threading.Thread(
+        target=_starte_dach_job,
+        args=(request, job_id),
+        daemon=True,
+    )
+    thread.start()
+
+    return DachJobStatus(job_id=job_id, status="laeuft")
+
+
+@app.get("/dach/status/{job_id}", response_model=DachJobStatus)
+def dach_job_status(
+    job_id: str,
+    x_api_key: Optional[str] = Header(None),
+):
+    """Gibt den Status eines laufenden Dach-Jobs zurück."""
+    prüfe_api_key(x_api_key)
+    j = _dach_jobs.get(job_id)
+    if not j:
+        raise HTTPException(status_code=404, detail="Job nicht gefunden")
+    return DachJobStatus(
+        job_id=job_id,
+        status=j["status"],
+        gescannt=j.get("gescannt", 0),
+        gefiltert=j.get("gefiltert", 0),
+        verarbeitet=j.get("verarbeitet", 0),
+        fehler=j.get("fehler"),
+    )
+
+
+@app.get("/dach/ergebnisse/{job_id}")
+def dach_ergebnisse(
+    job_id: str,
+    x_api_key: Optional[str] = Header(None),
+):
+    """Gibt die Ergebnisse eines abgeschlossenen Dach-Jobs zurück."""
+    prüfe_api_key(x_api_key)
+    if job_id not in _dach_jobs:
+        raise HTTPException(status_code=404, detail="Job nicht gefunden")
+    leads = _dach_ergebnisse.get(job_id, [])
+    return {"job_id": job_id, "anzahl": len(leads), "leads": leads}
+
+
+@app.get("/dach/jobs")
+def dach_alle_jobs(x_api_key: Optional[str] = Header(None)):
+    """Listet alle bekannten Dach-Jobs (neueste zuerst)."""
+    prüfe_api_key(x_api_key)
+    jobs = [
+        {"job_id": jid, **jdata}
+        for jid, jdata in reversed(list(_dach_jobs.items()))
+    ]
+    return {"jobs": jobs}
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("api:app", host="0.0.0.0", port=8000, reload=True)
