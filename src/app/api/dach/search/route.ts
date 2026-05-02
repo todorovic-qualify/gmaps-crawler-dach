@@ -22,6 +22,12 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    const bekannteRows = await prisma.dachLead.findMany({
+      select: { osmId: true },
+      distinct: ["osmId"],
+    });
+    const bekannte_osm_ids = bekannteRows.map((r) => r.osmId);
+
     const res = await fetch(`${CRAWLER_URL}/dach/starten`, {
       method: "POST",
       headers: {
@@ -35,6 +41,7 @@ export async function POST(req: NextRequest) {
         max_ergebnisse,
         enrichment,
         nur_mit_kontakt,
+        bekannte_osm_ids,
         ...(lat != null ? { lat } : {}),
         ...(lon != null ? { lon } : {}),
       }),

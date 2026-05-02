@@ -522,6 +522,7 @@ class DachStartRequest(BaseModel):
     nur_mit_kontakt: bool = False
     lat: Optional[float] = None
     lon: Optional[float] = None
+    bekannte_osm_ids: list[str] = []
 
 
 class DachJobStatus(BaseModel):
@@ -557,9 +558,10 @@ def _starte_dach_job(request: DachStartRequest, job_id: str) -> None:
         )
         _dach_jobs[job_id]["gefiltert"] = len(leads)
 
+        bekannte = set(request.bekannte_osm_ids)
         if request.enrichment:
             for i, lead in enumerate(leads):
-                if lead.webseite:
+                if lead.webseite and lead.osm_id not in bekannte:
                     try:
                         reichere_dachlead_an(lead)
                     except Exception as e:
