@@ -19,7 +19,8 @@ export async function GET(
     }
     const data = await res.json();
 
-    await prisma.dachJob.updateMany({
+    // DB-Update im Hintergrund – Fehler blockieren die Antwort nicht
+    prisma.dachJob.updateMany({
       where: { id: jobId },
       data: {
         status: data.status ?? "laeuft",
@@ -27,7 +28,7 @@ export async function GET(
         verarbeitet: data.verarbeitet ?? 0,
         fehler: data.fehler ?? null,
       },
-    });
+    }).catch(() => {});
 
     return NextResponse.json(data);
   } catch (e: unknown) {

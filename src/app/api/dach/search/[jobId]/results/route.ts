@@ -35,6 +35,73 @@ function dbLeadToApiShape(l: DbLead) {
   };
 }
 
+async function persistLeads(jobId: string, crawlerLeads: Record<string, unknown>[]) {
+  if (crawlerLeads.length === 0) return crawlerLeads;
+
+  // Welche osm_ids kennen wir bereits aus der DB?
+  const incomingOsmIds = crawlerLeads.map((l) => String(l.osm_id ?? ""));
+  const existingDbLeads = await prisma.dachLead.findMany({
+    where: { osmId: { in: incomingOsmIds } },
+    orderBy: { erstelltAm: "desc" },
+    distinct: ["osmId"],
+  });
+  const dbLeadByOsmId = new Map(existingDbLeads.map((l) => [l.osmId, l]));
+
+  // Neue Leads (noch nicht in DB) einspeichern
+  const neueLeads = crawlerLeads.filter(
+    (l) => !dbLeadByOsmId.has(String(l.osm_id ?? ""))
+  );
+  if (neueLeads.length > 0) {
+    await Promise.all(
+      neueLeads.map((l) =>
+        prisma.dachLead.upsert({
+          where: { jobId_osmId: { jobId, osmId: String(l.osm_id ?? "") } },
+          update: {},
+          create: {
+            jobId,
+            osmId: String(l.osm_id ?? ""),
+            name: String(l.name ?? "") || null,
+            operator: String(l.operator ?? "") || null,
+            brand: String(l.brand ?? "") || null,
+            gebaeudeTyp: String(l.gebaeude_typ ?? "") || null,
+            gebaeudeNutzung: String(l.gebaeude_nutzung ?? "") || null,
+            dachflaecheQm: Number(l.dachflaeche_qm ?? 0),
+            adresse: String(l.adresse ?? "") || null,
+            postleitzahl: String(l.postleitzahl ?? "") || null,
+            stadt: String(l.stadt ?? "") || null,
+            telefon: String(l.telefon ?? "") || null,
+            email: String(l.email ?? "") || null,
+            alleEmails: String(l.alle_emails ?? "") || null,
+            alleTelefone: String(l.alle_telefone ?? "") || null,
+            webseite: String(l.webseite ?? "") || null,
+            entscheidungstraeger: String(l.entscheidungstraeger ?? l.geschaeftsfuehrer ?? "") || null,
+            rechtlicherName: String(l.rechtlicher_name ?? "") || null,
+            impressumInfo: String(l.impressum_info ?? "") || null,
+            quelleUrl: String(l.quelle_url ?? "") || null,
+            googleMapsUrl: String(l.google_maps_url ?? "") || null,
+            kontaktVorhanden: Boolean(l.kontakt_vorhanden),
+            hatPvAnlage: String(l.hat_pv_anlage ?? "") || null,
+            lat: l.lat != null ? Number(l.lat) : null,
+            lon: l.lon != null ? Number(l.lon) : null,
+          },
+        })
+      )
+    );
+  }
+
+  await prisma.dachJob.updateMany({
+    where: { id: jobId },
+    data: { status: "abgeschlossen", verarbeitet: crawlerLeads.length },
+  });
+
+  // Antwort: bekannte Leads aus DB (mit vollständigen Daten), neue aus Crawler
+  return crawlerLeads.map((l) => {
+    const osmId = String(l.osm_id ?? "");
+    const dbLead = dbLeadByOsmId.get(osmId);
+    return dbLead ? dbLeadToApiShape(dbLead) : l;
+  });
+}
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: { jobId: string } },
@@ -50,74 +117,15 @@ export async function GET(
       const data = await res.json();
       const crawlerLeads: Record<string, unknown>[] = data.leads ?? [];
 
-      if (crawlerLeads.length > 0) {
-        // Welche osm_ids kennen wir bereits aus der DB?
-        const incomingOsmIds = crawlerLeads.map((l) => String(l.osm_id ?? ""));
-        const existingDbLeads = await prisma.dachLead.findMany({
-          where: { osmId: { in: incomingOsmIds } },
-          orderBy: { erstelltAm: "desc" },
-          distinct: ["osmId"],
-        });
-        const dbLeadByOsmId = new Map(existingDbLeads.map((l) => [l.osmId, l]));
-
-        // Neue Leads (noch nicht in DB) einspeichern
-        const neueLeads = crawlerLeads.filter(
-          (l) => !dbLeadByOsmId.has(String(l.osm_id ?? ""))
-        );
-        if (neueLeads.length > 0) {
-          await Promise.all(
-            neueLeads.map((l) =>
-              prisma.dachLead.upsert({
-                where: { jobId_osmId: { jobId, osmId: String(l.osm_id ?? "") } },
-                update: {},
-                create: {
-                  jobId,
-                  osmId: String(l.osm_id ?? ""),
-                  name: String(l.name ?? "") || null,
-                  operator: String(l.operator ?? "") || null,
-                  brand: String(l.brand ?? "") || null,
-                  gebaeudeTyp: String(l.gebaeude_typ ?? "") || null,
-                  gebaeudeNutzung: String(l.gebaeude_nutzung ?? "") || null,
-                  dachflaecheQm: Number(l.dachflaeche_qm ?? 0),
-                  adresse: String(l.adresse ?? "") || null,
-                  postleitzahl: String(l.postleitzahl ?? "") || null,
-                  stadt: String(l.stadt ?? "") || null,
-                  telefon: String(l.telefon ?? "") || null,
-                  email: String(l.email ?? "") || null,
-                  alleEmails: String(l.alle_emails ?? "") || null,
-                  alleTelefone: String(l.alle_telefone ?? "") || null,
-                  webseite: String(l.webseite ?? "") || null,
-                  entscheidungstraeger: String(l.entscheidungstraeger ?? l.geschaeftsfuehrer ?? "") || null,
-                  rechtlicherName: String(l.rechtlicher_name ?? "") || null,
-                  impressumInfo: String(l.impressum_info ?? "") || null,
-                  quelleUrl: String(l.quelle_url ?? "") || null,
-                  googleMapsUrl: String(l.google_maps_url ?? "") || null,
-                  kontaktVorhanden: Boolean(l.kontakt_vorhanden),
-                  hatPvAnlage: String(l.hat_pv_anlage ?? "") || null,
-                  lat: l.lat != null ? Number(l.lat) : null,
-                  lon: l.lon != null ? Number(l.lon) : null,
-                },
-              })
-            )
-          );
-        }
-
-        await prisma.dachJob.updateMany({
-          where: { id: jobId },
-          data: { status: "abgeschlossen", verarbeitet: crawlerLeads.length },
-        });
-
-        // Antwort zusammenbauen: bekannte Leads aus DB, neue aus Crawler
-        const finalLeads = crawlerLeads.map((l) => {
-          const osmId = String(l.osm_id ?? "");
-          const dbLead = dbLeadByOsmId.get(osmId);
-          return dbLead ? dbLeadToApiShape(dbLead) : l;
-        });
-
-        return NextResponse.json({ ...data, leads: finalLeads });
+      // DB-Persistierung versuchen – Fehler (z.B. Tabelle existiert noch nicht) blockieren Ergebnis nicht
+      let finalLeads: unknown[] = crawlerLeads;
+      try {
+        finalLeads = await persistLeads(jobId, crawlerLeads);
+      } catch {
+        // DB noch nicht bereit – Crawler-Daten direkt zurückgeben
       }
 
-      return NextResponse.json(data);
+      return NextResponse.json({ ...data, leads: finalLeads });
     }
 
     // Crawler nicht verfügbar → aus DB laden

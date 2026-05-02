@@ -21,13 +21,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Ort fehlt" }, { status: 400 });
   }
 
+  // Bekannte osm_ids aus DB laden – falls Tabelle noch nicht existiert, leere Liste
+  let bekannte_osm_ids: string[] = [];
   try {
-    const bekannteRows = await prisma.dachLead.findMany({
+    const rows = await prisma.dachLead.findMany({
       select: { osmId: true },
       distinct: ["osmId"],
     });
-    const bekannte_osm_ids = bekannteRows.map((r) => r.osmId);
+    bekannte_osm_ids = rows.map((r) => r.osmId);
+  } catch {
+    // DB noch nicht bereit – Scan ohne Cache starten
+  }
 
+  try {
     const res = await fetch(`${CRAWLER_URL}/dach/starten`, {
       method: "POST",
       headers: {
@@ -55,9 +61,10 @@ export async function POST(req: NextRequest) {
     const data = await res.json();
     const jobId: string = data.job_id;
 
-    await prisma.dachJob.create({
+    // Job in DB anlegen – Fehler blockieren den Scan nicht
+    prisma.dachJob.create({
       data: { id: jobId, ort: ort.trim(), status: "laeuft" },
-    });
+    }).catch(() => {});
 
     return NextResponse.json({ jobId, status: data.status });
   } catch (e: unknown) {
