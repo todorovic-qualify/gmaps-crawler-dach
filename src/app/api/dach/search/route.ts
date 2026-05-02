@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 
 const CRAWLER_URL = (process.env.CRAWLER_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
 const CRAWLER_KEY = process.env.CRAWLER_API_KEY ?? "";
@@ -45,7 +46,13 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await res.json();
-    return NextResponse.json({ jobId: data.job_id, status: data.status });
+    const jobId: string = data.job_id;
+
+    await prisma.dachJob.create({
+      data: { id: jobId, ort: ort.trim(), status: "laeuft" },
+    });
+
+    return NextResponse.json({ jobId, status: data.status });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: `Verbindung zum Crawler fehlgeschlagen: ${msg}` }, { status: 503 });

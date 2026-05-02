@@ -185,3 +185,53 @@ model Suchauftrag {
 
   @@map("suchauftrag")
 }
+
+model DachJob {
+  id             String     @id
+  ort            String     @default("")
+  status         String     @default("laeuft")
+  gefiltert      Int        @default(0)
+  verarbeitet    Int        @default(0)
+  fehler         String?
+  leads          DachLead[]
+  erstelltAm     DateTime   @default(now()) @map("erstellt_am")
+  aktualisiertAm DateTime   @updatedAt @map("aktualisiert_am")
+
+  @@map("dach_job")
+}
+
+model DachLead {
+  id                   String   @id @default(cuid())
+  jobId                String   @map("job_id")
+  job                  DachJob  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  osmId                String   @map("osm_id")
+  name                 String?
+  operator             String?
+  brand                String?
+  gebaeudeTyp          String?  @map("gebaeude_typ")
+  gebaeudeNutzung      String?  @map("gebaeude_nutzung")
+  dachflaecheQm        Float    @default(0) @map("dachflaeche_qm")
+  adresse              String?
+  postleitzahl         String?
+  stadt                String?
+  telefon              String?
+  email                String?
+  alleEmails           String?  @map("alle_emails")
+  alleTelefone         String?  @map("alle_telefone")
+  webseite             String?
+  entscheidungstraeger String?  @map("entscheidungstraeger")
+  rechtlicherName      String?  @map("rechtlicher_name")
+  impressumInfo        String?  @map("impressum_info")
+  quelleUrl            String?  @map("quelle_url")
+  googleMapsUrl        String?  @map("google_maps_url")
+  kontaktVorhanden     Boolean  @default(false) @map("kontakt_vorhanden")
+  hatPvAnlage          String?  @map("hat_pv_anlage")
+  lat                  Float?
+  lon                  Float?
+  erstelltAm           DateTime @default(now()) @map("erstellt_am")
+
+  @@unique([jobId, osmId])
+  @@index([jobId])
+  @@map("dach_lead")
+}

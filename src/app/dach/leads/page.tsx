@@ -6,10 +6,12 @@ import { useState, useEffect, Fragment } from "react";
 
 interface DachJob {
   job_id: string;
+  ort?: string;
   status: string;
   gefiltert: number;
   verarbeitet: number;
   fehler?: string;
+  erstellt_am?: string;
 }
 
 interface DachLead {
@@ -221,9 +223,14 @@ export default function DachLeadsSeite() {
                         : "bg-red-400"
                   }`}
                 />
-                Job {job.job_id}
+                {job.ort || `Job ${job.job_id}`}
                 {job.verarbeitet > 0 && (
                   <span className="ml-1.5 text-slate-400">({job.verarbeitet})</span>
+                )}
+                {job.erstellt_am && (
+                  <span className="ml-1.5 text-slate-400">
+                    · {new Date(job.erstellt_am).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })}
+                  </span>
                 )}
               </button>
             ))}

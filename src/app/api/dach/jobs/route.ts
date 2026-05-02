@@ -1,15 +1,32 @@
 import { NextResponse } from "next/server";
-
-const CRAWLER_URL = (process.env.CRAWLER_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
-const CRAWLER_KEY = process.env.CRAWLER_API_KEY ?? "";
+import { prisma } from "@/lib/prisma";
 
 export async function GET() {
   try {
-    const res = await fetch(`${CRAWLER_URL}/dach/jobs`, {
-      headers: CRAWLER_KEY ? { "x-api-key": CRAWLER_KEY } : {},
+    const dbJobs = await prisma.dachJob.findMany({
+      orderBy: { erstelltAm: "desc" },
+      select: {
+        id: true,
+        ort: true,
+        status: true,
+        gefiltert: true,
+        verarbeitet: true,
+        fehler: true,
+        erstelltAm: true,
+      },
     });
-    if (!res.ok) return NextResponse.json({ jobs: [] });
-    return NextResponse.json(await res.json());
+
+    const jobs = dbJobs.map((j) => ({
+      job_id: j.id,
+      ort: j.ort,
+      status: j.status,
+      gefiltert: j.gefiltert,
+      verarbeitet: j.verarbeitet,
+      fehler: j.fehler,
+      erstellt_am: j.erstelltAm,
+    }));
+
+    return NextResponse.json({ jobs });
   } catch {
     return NextResponse.json({ jobs: [] });
   }
