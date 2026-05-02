@@ -268,7 +268,7 @@ export default function DachScanSeite() {
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Max. Ergebnisse</label>
             <input
-              type="number" min={10} max={1000} step={10} value={maxErgebnisse}
+              type="number" min={3} max={1000} step={1} value={maxErgebnisse}
               onChange={(e) => setMaxErgebnisse(Number(e.target.value))}
               className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500"
             />
