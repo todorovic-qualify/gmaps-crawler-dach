@@ -151,6 +151,44 @@ ENTSCHEIDUNGSTRAEGER_RE = [
     ),
 ]
 
+# Speziell: Geschäftsführer-Name (höhere Präzision)
+GESCHAEFTSFUEHRER_RE = [
+    # "Geschäftsführer: Max Mustermann" / "Geschäftsführerin: ..."
+    re.compile(
+        r"Gesch[äa]ftsf[üu]hrer(?:in)?\s*[:\-]\s*"
+        r"([A-ZÄÖÜ][a-zäöüß\-]+(?:\s+[A-ZÄÖÜ]?[a-zäöüß\-]+)*\s+[A-ZÄÖÜ][a-zäöüß\-]+)",
+        re.MULTILINE,
+    ),
+    # "GF: Max Mustermann"
+    re.compile(
+        r"\bGF\s*[:\-]\s*([A-ZÄÖÜ][a-zäöüß\-]+(?:\s+[A-ZÄÖÜ][a-zäöüß\-]+){1,3})",
+        re.MULTILINE,
+    ),
+    # "vertreten durch: Max Mustermann" / "Vertreten durch Geschäftsführer Max Mustermann"
+    re.compile(
+        r"[Vv]ertreten\s+durch\s+(?:(?:den\s+)?Gesch[äa]ftsf[üu]hrer\s+)?"
+        r"([A-ZÄÖÜ][a-zäöüß\-]+(?:\s+[A-ZÄÖÜ][a-zäöüß\-]+){1,3})",
+        re.MULTILINE,
+    ),
+    # "Inhaber: Max Mustermann"
+    re.compile(
+        r"Inhaber(?:in)?\s*[:\-]\s*"
+        r"([A-ZÄÖÜ][a-zäöüß\-]+(?:\s+[A-ZÄÖÜ][a-zäöüß\-]+){1,3})",
+        re.MULTILINE,
+    ),
+    # "Inh.: Max Mustermann"
+    re.compile(
+        r"\bInh\.?\s*[:\-]\s*([A-ZÄÖÜ][a-zäöüß\-]+(?:\s+[A-ZÄÖÜ][a-zäöüß\-]+){1,3})",
+        re.MULTILINE,
+    ),
+    # CEO / Managing Director
+    re.compile(
+        r"\b(?:CEO|Managing\s+Director)\s*[:\-]\s*"
+        r"([A-ZÄÖÜ][a-zäöüß\-]+(?:\s+[A-ZÄÖÜ][a-zäöüß\-]+){1,3})",
+        re.I | re.MULTILINE,
+    ),
+]
+
 # Rechtlicher Firmenname
 RECHTLICHER_NAME_RE = [
     re.compile(
@@ -372,6 +410,20 @@ def extrahiere_entscheidungstraeger(text: str) -> Optional[str]:
             name = m.group(1).strip()
             # Plausibilitätsprüfung: min. 2 Wörter, keine Zahlen
             if " " in name and not re.search(r"\d", name):
+                return name
+    return None
+
+
+# [FAKT] Geschäftsführer speziell aus Impressum
+def extrahiere_geschaeftsfuehrer(text: str) -> Optional[str]:
+    """Sucht gezielt nach Geschäftsführer/Inhaber-Name im Impressumstext."""
+    for pattern in GESCHAEFTSFUEHRER_RE:
+        m = pattern.search(text)
+        if m:
+            name = m.group(1).strip()
+            # Plausibilitätsprüfung: 2-4 Wörter, keine Zahlen, nicht zu kurz
+            woerter = name.split()
+            if 2 <= len(woerter) <= 4 and not re.search(r"\d", name) and len(name) >= 5:
                 return name
     return None
 

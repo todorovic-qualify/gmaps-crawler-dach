@@ -36,8 +36,12 @@ class DachLead:
     email: Optional[str] = None
     webseite: Optional[str] = None
 
+    # PV-Anlage bereits vorhanden?
+    hat_pv_anlage: Optional[bool] = None   # True=ja, False=nein, None=unbekannt
+
     # Angereicherte Kontaktdaten (via Website-Crawl)
     entscheidungstraeger: Optional[str] = None
+    geschaeftsfuehrer: Optional[str] = None
     rechtlicher_name: Optional[str] = None
     gefundene_emails: list[str] = field(default_factory=list)
     gefundene_telefone: list[str] = field(default_factory=list)
@@ -53,6 +57,13 @@ class DachLead:
     def kontakt_vorhanden(self) -> bool:
         return bool(self.telefon or self.email or self.webseite or self.gefundene_emails or self.gefundene_telefone)
 
+    def pv_status(self) -> str:
+        if self.hat_pv_anlage is True:
+            return "vorhanden"
+        if self.hat_pv_anlage is False:
+            return "keine"
+        return "unbekannt"
+
     def to_csv_row(self) -> dict:
         return {
             "osm_id": self.osm_id,
@@ -62,6 +73,7 @@ class DachLead:
             "gebaeude_typ": self.gebaeude_typ or "",
             "gebaeude_nutzung": self.gebaeude_nutzung or "",
             "dachflaeche_qm": round(self.dachflaeche_qm, 1),
+            "hat_pv_anlage": self.pv_status(),
             "adresse": self.adresse or "",
             "postleitzahl": self.postleitzahl or "",
             "stadt": self.stadt or "",
@@ -70,7 +82,7 @@ class DachLead:
             "alle_emails": "; ".join(self.gefundene_emails),
             "alle_telefone": "; ".join(self.gefundene_telefone),
             "webseite": self.webseite or "",
-            "entscheidungstraeger": self.entscheidungstraeger or "",
+            "geschaeftsfuehrer": self.geschaeftsfuehrer or self.entscheidungstraeger or "",
             "rechtlicher_name": self.rechtlicher_name or "",
             "impressum_info": (self.impressum_info or "")[:300],
             "quelle_url": self.quelle_url,

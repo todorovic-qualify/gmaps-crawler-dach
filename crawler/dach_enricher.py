@@ -15,6 +15,7 @@ from crawler.utils.parse_utils import (
     bereinige_text,
     extrahiere_emails,
     extrahiere_entscheidungstraeger,
+    extrahiere_geschaeftsfuehrer,
     extrahiere_rechtlicher_name,
     extrahiere_telefon,
     parse_html,
@@ -59,6 +60,8 @@ def reichere_dachlead_an(lead: DachLead) -> DachLead:
                     text = soup.get_text(" ", strip=True)
                     if not lead.rechtlicher_name:
                         lead.rechtlicher_name = extrahiere_rechtlicher_name(text)
+                    if not lead.geschaeftsfuehrer:
+                        lead.geschaeftsfuehrer = extrahiere_geschaeftsfuehrer(text)
                     if not lead.entscheidungstraeger:
                         lead.entscheidungstraeger = extrahiere_entscheidungstraeger(text)
                     if not lead.impressum_info:

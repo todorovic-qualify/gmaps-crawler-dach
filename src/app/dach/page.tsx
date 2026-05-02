@@ -22,6 +22,7 @@ interface DachLead {
   gebaeude_typ: string;
   gebaeude_nutzung: string;
   dachflaeche_qm: number;
+  hat_pv_anlage: string; // "vorhanden" | "keine" | "unbekannt"
   adresse: string;
   postleitzahl: string;
   stadt: string;
@@ -30,6 +31,7 @@ interface DachLead {
   alle_emails: string;
   alle_telefone: string;
   webseite: string;
+  geschaeftsfuehrer: string;
   entscheidungstraeger: string;
   rechtlicher_name: string;
   impressum_info: string;
@@ -66,6 +68,16 @@ function kontaktBadge(lead: DachLead) {
   return <span className="px-1.5 py-0.5 rounded text-xs bg-slate-100 text-slate-400">—</span>;
 }
 
+function pvBadge(status: string) {
+  if (status === "vorhanden") {
+    return <span className="px-1.5 py-0.5 rounded text-xs bg-amber-100 text-amber-700 font-medium" title="PV-Anlage bereits vorhanden">☀️ PV</span>;
+  }
+  if (status === "keine") {
+    return <span className="px-1.5 py-0.5 rounded text-xs bg-green-50 text-green-600 font-medium" title="Keine PV-Anlage erkannt">✓ Frei</span>;
+  }
+  return <span className="px-1.5 py-0.5 rounded text-xs bg-slate-100 text-slate-400" title="PV-Status unbekannt">?</span>;
+}
+
 function anzeigeName(lead: DachLead): string {
   return lead.name || lead.operator || lead.brand || `Gebäude (${lead.gebaeude_typ || "unbekannt"})`;
 }
@@ -78,9 +90,9 @@ function exportCSV(leads: DachLead[]) {
   if (!leads.length) return;
   const cols: (keyof DachLead)[] = [
     "osm_id", "name", "operator", "brand", "gebaeude_typ", "gebaeude_nutzung",
-    "dachflaeche_qm", "adresse", "postleitzahl", "stadt",
+    "dachflaeche_qm", "hat_pv_anlage", "adresse", "postleitzahl", "stadt",
     "telefon", "email", "alle_emails", "alle_telefone", "webseite",
-    "entscheidungstraeger", "rechtlicher_name", "google_maps_url", "quelle_url",
+    "geschaeftsfuehrer", "entscheidungstraeger", "rechtlicher_name", "google_maps_url", "quelle_url",
   ];
   const header = cols.join(";");
   const rows = leads.map((l) =>
@@ -116,6 +128,7 @@ export default function DachScanSeite() {
   const [filterKontakt, setFilterKontakt] = useState(false);
   const [filterMinFlaeche, setFilterMinFlaeche] = useState(0);
   const [filterSuche, setFilterSuche] = useState("");
+  const [filterPV, setFilterPV] = useState<"alle" | "keine" | "vorhanden">("alle");
   const [sortBy, setSortBy] = useState<"dachflaeche_qm" | "name" | "stadt">("dachflaeche_qm");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
@@ -188,6 +201,8 @@ export default function DachScanSeite() {
     .filter((l) => {
       if (filterKontakt && !l.kontakt_vorhanden) return false;
       if (filterMinFlaeche > 0 && l.dachflaeche_qm < filterMinFlaeche) return false;
+      if (filterPV === "keine" && l.hat_pv_anlage !== "keine") return false;
+      if (filterPV === "vorhanden" && l.hat_pv_anlage !== "vorhanden") return false;
       if (filterSuche) {
         const q = filterSuche.toLowerCase();
         const haystack = [l.name, l.operator, l.brand, l.adresse, l.stadt, l.email].join(" ").toLowerCase();
@@ -216,6 +231,8 @@ export default function DachScanSeite() {
 
   const isRunning = job?.status === "laeuft";
   const mitKontakt = leads.filter((l) => l.kontakt_vorhanden).length;
+  const ohneOhPV = leads.filter((l) => l.hat_pv_anlage === "keine").length;
+  const mitPV = leads.filter((l) => l.hat_pv_anlage === "vorhanden").length;
 
   return (
     <div className="space-y-8">
@@ -345,6 +362,14 @@ export default function DachScanSeite() {
                   <strong className="text-green-700">{mitKontakt}</strong> mit Kontakt
                 </span>
                 <span>
+                  <strong className="text-green-600">{ohneOhPV}</strong> ohne PV-Anlage
+                </span>
+                {mitPV > 0 && (
+                  <span>
+                    <strong className="text-amber-600">{mitPV}</strong> haben bereits PV
+                  </span>
+                )}
+                <span>
                   Größtes Dach:{" "}
                   <strong className="text-slate-800">
                     {leads[0]?.dachflaeche_qm.toLocaleString("de-DE", { maximumFractionDigits: 0 })} m²
@@ -391,6 +416,18 @@ export default function DachScanSeite() {
               />
               <span className="text-slate-700">Nur mit Kontakt</span>
             </label>
+            <div className="min-w-[160px]">
+              <label className="text-xs font-medium text-slate-600 mb-1 block">PV-Anlage</label>
+              <select
+                value={filterPV}
+                onChange={(e) => setFilterPV(e.target.value as typeof filterPV)}
+                className="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 bg-white"
+              >
+                <option value="alle">Alle anzeigen</option>
+                <option value="keine">Ohne PV-Anlage ✓</option>
+                <option value="vorhanden">Mit PV-Anlage ☀️</option>
+              </select>
+            </div>
             <p className="text-xs text-slate-400 ml-auto self-end">
               {angezeigteLeads.length} / {leads.length} angezeigt
             </p>
@@ -419,7 +456,7 @@ export default function DachScanSeite() {
                   >
                     Dachfläche{sortPfeil("dachflaeche_qm")}
                   </th>
-                  {["Typ", "Kontakt", "Telefon / E-Mail", "Website", "Details"].map((h) => (
+                  {["PV", "Typ", "Kontakt", "Telefon / E-Mail", "Website", "Details"].map((h) => (
                     <th key={h} className="text-left px-3 py-2.5 font-medium text-slate-600 whitespace-nowrap">
                       {h}
                     </th>
@@ -441,6 +478,9 @@ export default function DachScanSeite() {
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap">
                         {flaecheBadge(lead.dachflaeche_qm)}
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        {pvBadge(lead.hat_pv_anlage)}
                       </td>
                       <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap text-xs">
                         {lead.gebaeude_typ || lead.gebaeude_nutzung || "—"}
@@ -479,7 +519,7 @@ export default function DachScanSeite() {
                     {/* Detail-Zeile */}
                     {expandedId === lead.osm_id && (
                       <tr className="bg-amber-50/50">
-                        <td colSpan={8} className="px-4 py-4">
+                        <td colSpan={9} className="px-4 py-4">
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
                             <div>
                               <p className="font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Identifikation</p>
@@ -488,7 +528,12 @@ export default function DachScanSeite() {
                                 {lead.operator && <div><dt className="inline text-slate-400">Betreiber: </dt><dd className="inline text-slate-700">{lead.operator}</dd></div>}
                                 {lead.brand && <div><dt className="inline text-slate-400">Marke: </dt><dd className="inline text-slate-700">{lead.brand}</dd></div>}
                                 {lead.rechtlicher_name && <div><dt className="inline text-slate-400">Rechtl. Name: </dt><dd className="inline text-slate-700 font-medium">{lead.rechtlicher_name}</dd></div>}
-                                {lead.entscheidungstraeger && <div><dt className="inline text-slate-400">Ansprechpartner: </dt><dd className="inline text-slate-700 font-medium">{lead.entscheidungstraeger}</dd></div>}
+                                {(lead.geschaeftsfuehrer || lead.entscheidungstraeger) && (
+                                  <div>
+                                    <dt className="inline text-slate-400">Geschäftsführer: </dt>
+                                    <dd className="inline text-slate-900 font-semibold">{lead.geschaeftsfuehrer || lead.entscheidungstraeger}</dd>
+                                  </div>
+                                )}
                                 <div><dt className="inline text-slate-400">Adresse: </dt><dd className="inline text-slate-700">{[lead.adresse, lead.postleitzahl, lead.stadt].filter(Boolean).join(", ") || "—"}</dd></div>
                               </dl>
                             </div>
@@ -537,6 +582,17 @@ export default function DachScanSeite() {
                                 <div><dt className="inline text-slate-400">Typ: </dt><dd className="inline text-slate-700">{lead.gebaeude_typ || "—"}</dd></div>
                                 <div><dt className="inline text-slate-400">Nutzung: </dt><dd className="inline text-slate-700">{lead.gebaeude_nutzung || "—"}</dd></div>
                                 <div><dt className="inline text-slate-400">Dachfläche: </dt><dd className="inline text-slate-700 font-bold">{lead.dachflaeche_qm.toLocaleString("de-DE", { maximumFractionDigits: 0 })} m²</dd></div>
+                                <div>
+                                  <dt className="inline text-slate-400">PV-Anlage: </dt>
+                                  <dd className="inline">
+                                    {lead.hat_pv_anlage === "vorhanden"
+                                      ? <span className="text-amber-600 font-medium">☀️ vorhanden</span>
+                                      : lead.hat_pv_anlage === "keine"
+                                        ? <span className="text-green-600 font-medium">✓ keine erkannt</span>
+                                        : <span className="text-slate-400">unbekannt</span>
+                                    }
+                                  </dd>
+                                </div>
                                 <div><dt className="inline text-slate-400">OSM-ID: </dt><dd className="inline text-slate-500 font-mono">{lead.osm_id}</dd></div>
                               </dl>
                             </div>
