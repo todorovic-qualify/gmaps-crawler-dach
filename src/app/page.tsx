@@ -229,9 +229,9 @@ export default function StartSeite() {
             <label className="block text-sm font-medium text-slate-700 mb-1">Max. Ergebnisse</label>
             <input
               type="number"
-              min={5}
+              min={3}
               max={500}
-              step={5}
+              step={1}
               value={maxErgebnisse}
               onChange={(e) => setMaxErgebnisse(Number(e.target.value))}
               className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
